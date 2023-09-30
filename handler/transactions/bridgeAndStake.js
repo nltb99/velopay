@@ -1,58 +1,69 @@
-const { supportedTokenToStake } = require('../contants')
-const BananaAccount = require('../abi/BananaAccount.json')
-const { ethers } = require("ethers");
-const { AxelarQueryAPI, Environment, EvmChain, GasToken } = require('@axelar-network/axelarjs-sdk')
-const WMATIC = require('../abi/WMATIC.json')
+const {clusterApiUrl, Connection, } = require('@solana/web3.js');
+const splToken = require('@solana/spl-token');
 
-const getGasFee = async () => {
-    const api = new AxelarQueryAPI({ environment: Environment.TESTNET });
+async function contructBridgeTransactionForStaking(solAmount) {
+  const connection = new Connection(clusterApiUrl("devnet"), 'confirmed');
 
-    // Calculate how much gas to pay to Axelar to execute the transaction at the destination chain
-    const gasFee = await api.estimateGasFee(
-      EvmChain.POLYGON,
-      EvmChain.AVALANCHE,
-      GasToken.MATIC,
-      1000000,
-      3,
-    );
+  const walletAddress = 'YOUR_WALLET_ADDRESS';
+  const bridgeAddress = 'BRIDGE_CONTRACT_ADDRESS';
 
-    return gasFee;
+  const solTokenMintAddress = 'SOL_TOKEN_MINT_ADDRESS';
+  const bridgedTokenMintAddress = 'BRIDGED_TOKEN_MINT_ADDRESS';
+
+  const stakingProgramAddress = 'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So';
+
+  const tokenAccounts = await splToken.Token.getAssociatedTokenAddress(
+    splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+    splToken.TOKEN_PROGRAM_ID,
+    solTokenMintAddress,
+    walletAddress
+  );
+
+  const bridgeContract = new solanaWeb3.PublicKey(bridgeAddress);
+  const stakingProgram = new solanaWeb3.PublicKey(stakingProgramAddress);
+
+  const instructions = [
+    splToken.Token.createTransferInstruction(
+      splToken.TOKEN_PROGRAM_ID,
+      tokenAccounts,
+      bridgeContract,
+      solAmount.userAddress,
+      [],
+      solAmount.amount
+    ),
+    new solanaWeb3.TransactionInstruction({
+      keys: [
+        { pubkey: solAmount.userAddress, isSigner: true, isWritable: false },
+        { pubkey: tokenAccounts, isSigner: false, isWritable: true },
+        { pubkey: new solanaWeb3.PublicKey(solTokenMintAddress), isSigner: false, isWritable: false },
+        { pubkey: new solanaWeb3.PublicKey(bridgedTokenMintAddress), isSigner: false, isWritable: false },
+        { pubkey: stakingProgram, isSigner: false, isWritable: true },
+      ],
+      programId: stakingProgram,
+    }),
+  ];
+
+  const transaction = new solanaWeb3.Transaction().add(...instructions);
+  transaction.feePayer = solAmount.userAddress;
+  const { blockhash } = await connection.getRecentBlockhash();
+  transaction.recentBlockhash = blockhash;
+  transaction.setSigners(solAmount.userAddress);
+  const signedTransaction = await solAmount.signTransaction(transaction);
+  const txid = await connection.sendRawTransaction(signedTransaction.serialize());
+
+  console.log('Transaction sent:', txid);
+
+  return {
+    success: true,
+    context: `This transaction will first bridge your ${transactionData.amount} amount of WMATIC token to Avalanche blockchain and then it 
+    will stake your ${transactionData.amount} token into Aave Staking contract which is avalaible on Avalanche 
+    as after research we found out it is currently giving max APY (5.69%) on staked assets.`,
+    transaction: [
+        {
+            to: solAmount.userAddress,
+        },
+    ]
+  }
 }
 
-const contructBridgeTransactionForStaking = async (stakingData) => {
-    const relayerFee = await getGasFee();
-    const wmaticAvalance = '0xB923E2374639D0605388D91CFedAfCeCE03Cfd8f'
-    const avalancheStaking = '0x65f0dAC1129b1406Ae8c96752b729e4bd4355Ef8';
-
-    const crossChainTransactionData = new ethers.utils.Interface(BananaAccount.abi).encodeFunctionData(
-        'crossChainTransact',
-        ['WMATIC',
-        'Avalanche',
-        stakingData.userAddress,
-        ethers.utils.parseEther(stakingData.amount),
-        '0x']
-    );
-
-    return {
-        success: true,
-        context: `This transaction will first bridge your ${stakingData.amount} amount of WMATIC token to Avalanche blockchain and then it will stake your ${stakingData.amount} token into Aave Staking contract which is avalaible on Avalanche as after research we found out it is currently giving max APY (5.69%) on staked assets.`,
-        transaction: [
-            {
-                to: stakingData.userAddress,
-                value: relayerFee,
-                data: crossChainTransactionData,
-                gasLimit: '0x55555'
-            },
-            {
-                to: wmaticAvalance,
-                value: 0,
-                gasLimit: '0x55555',
-                data: new ethers.utils.Interface(WMATIC).encodeFunctionData(
-                'transfer',
-                [avalancheStaking, ethers.utils.parseEther(stakingData.amount)])
-            }
-        ]
-    }
-}
-
-module.exports = { contructBridgeTransactionForStaking }
+module.exports = { contructBridgeTransactionForStaking };

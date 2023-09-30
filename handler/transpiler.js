@@ -25,8 +25,6 @@ const { contructBridgeTransactionForStaking } = require('./transactions/bridgeAn
 const transpiler = async (currentStep, classifier, userAddress, chain) => {
 
   console.log('this is chain ', chain)
-  console.log('this is chain ', typeof chain)
-  console.log('this is chain ', chain === 137)
   const context = classifier.classify(currentStep);
   console.log('step context ', context);
 
